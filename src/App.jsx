@@ -399,9 +399,20 @@ export default function App() {
             if (errData.code === 'QUOTA_EXCEEDED') {
               throw new Error("Neural Engine is cooling down (Quota Exceeded). Please wait a moment and try again.");
             }
-            errMessage = errData.error || errMessage;
+            if (errData.code === 'CONFIG_ERROR') {
+              errMessage = `Configuration Missing: ${errData.error}`;
+            } else {
+              errMessage = errData.error || errMessage;
+            }
+            if (errData.details) {
+              console.error("Server error details:", errData.details);
+            }
           } catch (e) {
-            errMessage = `Server error (${response.status}): Invalid JSON response`;
+            if (e.message && e.message.includes("Configuration Missing")) {
+              errMessage = e.message;
+            } else {
+              errMessage = `Server error (${response.status}): Invalid response format`;
+            }
           }
         } else {
           try {
