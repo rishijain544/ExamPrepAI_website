@@ -31,26 +31,40 @@ app.post("/api/generate", async (req, res) => {
       });
     }
 
-    const genAI = new GoogleGenAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: modelName || "gemini-1.5-flash",
-      systemInstruction: systemInstruction
+    const ai = new GoogleGenAI({
+      apiKey: apiKey,
     });
 
     let result;
     if (sourceType === 'file' && fileData) {
       console.log(`[API] Processing file: ${fileData.mimeType}, size: ${Math.round(fileData.data.length / 1024)}KB`);
-      const response = await model.generateContent([
-        { inlineData: { mimeType: fileData.mimeType, data: fileData.data } },
-        prompt
-      ]);
-      result = response.response.text();
+      const response = await ai.models.generateContent({
+        model: modelName || "gemini-1.5-flash",
+        contents: [
+          { inlineData: { mimeType: fileData.mimeType, data: fileData.data } },
+          { text: prompt }
+        ],
+        config: {
+          systemInstruction: systemInstruction,
+          responseMimeType: "application/json",
+          temperature: temperature || 0.2
+        }
+      });
+      result = response.text;
     } else {
       console.log(`[API] Processing text source`);
-      const response = await model.generateContent([
-        `Context Material:\n${textSource || ""}\n\nTask:\n${prompt}`
-      ]);
-      result = response.response.text();
+      const response = await ai.models.generateContent({
+        model: modelName || "gemini-1.5-flash",
+        contents: [
+          { text: `Context Material:\n${textSource || ""}\n\nTask:\n${prompt}` }
+        ],
+        config: {
+          systemInstruction: systemInstruction,
+          responseMimeType: "application/json",
+          temperature: temperature || 0.2
+        }
+      });
+      result = response.text;
     }
 
     if (!result) {
@@ -96,7 +110,7 @@ async function startServer() {
   }
 
   // Catch-all route for SPA
-  app.get("*", async (req, res, next) => {
+  app.get("*all", async (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     
     console.log(`[SERVER] Handling request for: ${req.path}`);
