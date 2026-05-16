@@ -3,118 +3,115 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 
 const app = express();
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "30mb" }));
 
-// Helper for Vercel context
-const isVercel = process.env.VERCEL === "1" || !!process.env.VERCEL;
+// Helper to determine if we are on Vercel
+const isVercel = !!(process.env.VERCEL || process.env.VERCEL_URL);
 
-// Explicit route for Vercel
+// API Route
 app.post("/api/generate", async (req, res) => {
-  console.log("[API] Generate request received", { 
-    sourceType: req.body.sourceType,
-    model: req.body.modelName 
-  });
-
+  console.log(`[${new Date().toISOString()}] Handling /api/generate`);
+  
   try {
     const { prompt, systemInstruction, modelName, sourceType, fileData, textSource, temperature } = req.body;
     
     if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
+      return res.status(400).json({ error: "No prompt provided" });
     }
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
-      console.error("[CRITICAL] Missing GEMINI_API_KEY environment variable");
+      console.error("CRITICAL: GEMINI_API_KEY is not set");
       return res.status(500).json({ 
-        error: "Intelligence Engine configuration missing. Please add GEMINI_API_KEY to your Vercel Environment Variables.",
-        code: "CONFIG_ERROR"
+        error: "Server configuration error: Gemini API key missing.",
+        details: "Please ensure GEMINI_API_KEY is configured in your environment variables." 
       });
     }
 
-    const ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: { headers: { 'User-Agent': 'exam-prep-ai-vercel' } }
+    const genAI = new GoogleGenAI(apiKey);
+    const model = genAI.getGenerativeModel({ 
+      model: modelName || "gemini-1.5-flash",
+      systemInstruction: systemInstruction
     });
 
-    const executeRequest = async () => {
-      let parts = [];
-      if (sourceType === 'file' && fileData) {
-        parts = [
-          { inlineData: { mimeType: fileData.mimeType, data: fileData.data } },
-          { text: prompt }
-        ];
-      } else {
-        parts = [
-          { text: `Material to analyze: \n\n ${textSource}` },
-          { text: prompt }
-        ];
-      }
-
-      const response = await ai.models.generateContent({
-        model: modelName || "gemini-1.5-flash",
-        contents: { parts },
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: "application/json",
-          temperature: temperature || 0.2
-        }
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("AI returned empty content");
-      return JSON.parse(text);
-    };
-
-    const result = await executeRequest();
-    return res.json(result);
-
-  } catch (error: any) {
-    console.error("[API Error]", error);
-    const status = error.status || 500;
-    
-    // Explicitly handle Vercel Timeout
-    if (error.message && error.message.includes("timeout")) {
-      return res.status(504).json({ error: "Intelligence Engine Timeout. Try processing a smaller file." });
+    let result;
+    if (sourceType === 'file' && fileData) {
+      console.log(`[API] Processing file: ${fileData.mimeType}, size: ${Math.round(fileData.data.length / 1024)}KB`);
+      const response = await model.generateContent([
+        { inlineData: { mimeType: fileData.mimeType, data: fileData.data } },
+        prompt
+      ]);
+      result = response.response.text();
+    } else {
+      console.log(`[API] Processing text source`);
+      const response = await model.generateContent([
+        `Context Material:\n${textSource || ""}\n\nTask:\n${prompt}`
+      ]);
+      result = response.response.text();
     }
 
-    return res.status(status).json({ 
-      error: error.message || "Internal Intelligence Failure", 
-      code: error.status === 429 ? "QUOTA_EXCEEDED" : "API_ERROR",
-      details: isVercel ? "Check Vercel logs for more details" : error.stack
+    if (!result) {
+      throw new Error("Empty response from AI engine");
+    }
+
+    // Try to parse as JSON if the prompt asked for it, otherwise return as payload
+    try {
+      const jsonResponse = JSON.parse(result);
+      return res.json(jsonResponse);
+    } catch (e) {
+      // If it's not JSON, return it in a structured way anyway
+      return res.json({ response: result });
+    }
+
+  } catch (error: any) {
+    console.error("[GEMINI API ERROR]", error);
+    const status = error.status || 500;
+    const message = error.message || "Internal failure in intelligence engine";
+    
+    return res.status(status).json({
+      error: message,
+      code: status === 429 ? "QUOTA_EXCEEDED" : "SERVER_ERROR",
+      details: isVercel ? "Check Vercel deployment logs for full stack trace." : error.stack
     });
   }
 });
 
-// Serve static files and handle SPA routing
+// Serve Static Files
 const distPath = path.join(process.cwd(), "dist");
 
-// Serve static assets from dist
-app.use(express.static(distPath));
+if (process.env.NODE_ENV === "development" && !isVercel) {
+  const { createServer } = await import("vite");
+  const vite = await createServer({
+    server: { middlewareMode: true },
+    appType: "spa",
+  });
+  app.use(vite.middlewares);
+} else {
+  app.use(express.static(distPath));
+}
 
-// For SPA routing: all other routes serve index.html
-app.get("*", (req, res, next) => {
-  // Skip API routes here as they are handled above
+// For SPA routing
+app.get("*", async (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   
-  const indexPath = path.join(distPath, "index.html");
-  res.sendFile(indexPath, (err) => {
+  if (process.env.NODE_ENV === "development" && !isVercel) {
+    // Vite handles this automatically via middleware
+    return next();
+  }
+
+  res.sendFile(path.join(distPath, "index.html"), (err) => {
     if (err) {
-      // If we are in local dev and not built yet, we might need to inform the user
-      if (!isVercel) {
-          res.status(404).send("Build output not found. Please run 'npm run build' or use local development mode.");
-      } else {
-          // On Vercel, this is a real problem
-          res.status(404).send("Application static files not found.");
-      }
+      res.status(404).send("Application files not found. Ensure the project is built.");
     }
   });
 });
 
-// Local development server logic
+// Environment-specific startup
 if (!isVercel) {
   const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[DEV] Server running on http://localhost:${PORT}`);
+    console.log(`[SERVER] Started in ${process.env.NODE_ENV} mode at http://localhost:${PORT}`);
+    console.log(`[SERVER] Serving static files from: ${distPath}`);
   });
 }
 
