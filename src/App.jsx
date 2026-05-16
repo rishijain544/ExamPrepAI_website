@@ -390,11 +390,36 @@ export default function App() {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errData = await response.json();
-        if (errData.code === 'QUOTA_EXCEEDED') {
-          throw new Error("Neural Engine is cooling down (Quota Exceeded). Please wait a moment and try again.");
+        let errMessage = "Failed to generate content";
+        const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const errData = await response.json();
+            if (errData.code === 'QUOTA_EXCEEDED') {
+              throw new Error("Neural Engine is cooling down (Quota Exceeded). Please wait a moment and try again.");
+            }
+            errMessage = errData.error || errMessage;
+          } catch (e) {
+            errMessage = `Server error (${response.status}): Invalid JSON response`;
+          }
+        } else {
+          try {
+            const text = await response.text();
+            console.error("Non-JSON error response:", text);
+            // Check for common Vercel/Proxy errors
+            if (text.includes("The page could not be found") || text.includes("404")) {
+              errMessage = "Intelligence Engine Offline: The API route was not found. Please check if the backend is properly deployed.";
+            } else if (text.includes("504") || text.includes("Timeout")) {
+              errMessage = "Intelligence Engine Timeout: The request took too long. Try with smaller material.";
+            } else {
+              errMessage = `Server error (${response.status}): ${response.statusText}`;
+            }
+          } catch (e) {
+            errMessage = `Server error (${response.status}): ${response.statusText}`;
+          }
         }
-        throw new Error(errData.error || "Failed to generate content");
+        throw new Error(errMessage);
       }
       
       const data = await response.json();
