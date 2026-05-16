@@ -9,7 +9,9 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 
 // API routes
-app.post("/api/generate", async (req, res) => {
+const api = express.Router();
+
+api.post("/generate", async (req, res) => {
   const { prompt, systemInstruction, modelName, sourceType, fileData, textSource, temperature } = req.body;
   
   if (!prompt || (!fileData && !textSource)) {
@@ -92,6 +94,9 @@ app.post("/api/generate", async (req, res) => {
     }
   }
 });
+
+app.use("/api", api);
+app.use("/", api); // Fallback for environments that strip /api/
 
 async function boot() {
   // Vite middleware for development
