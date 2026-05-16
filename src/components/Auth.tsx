@@ -68,10 +68,16 @@ export default function Auth({ onAuthSuccess }) {
       });
     } catch (err: any) {
       console.error(err);
-      const errorMessage = err.message.replace('Firebase: ', '');
+      let errorMessage = err.message.replace('Firebase: ', '');
+      
+      if (err.code === 'auth/unauthorized-domain') {
+        errorMessage = "Unauthorized Domain: You need to add this Vercel domain to your Firebase Console -> Authentication -> Settings -> Authorized Domains.";
+      }
+      
       setError(errorMessage);
       toast.error("Bridge Connection Failed", {
-        description: errorMessage
+        description: errorMessage,
+        duration: 8000
       });
     } finally {
       setLoading(false);
