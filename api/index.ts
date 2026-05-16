@@ -5,13 +5,16 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 app.use(express.json({ limit: "30mb" }));
 
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", env: process.env.NODE_ENV, isVercel: !!process.env.VERCEL });
+});
+
 // Helper to determine if we are on Vercel
-const isVercel = !!(process.env.VERCEL || process.env.VERCEL_URL);
+const isVercel = !!process.env.VERCEL;
 
 // API Route
 app.post("/api/generate", async (req, res) => {
-  console.log(`[${new Date().toISOString()}] Handling /api/generate`);
-  
   try {
     const { prompt, systemInstruction, modelName, sourceType, fileData, textSource, temperature } = req.body;
     
@@ -54,66 +57,77 @@ app.post("/api/generate", async (req, res) => {
       throw new Error("Empty response from AI engine");
     }
 
-    // Try to parse as JSON if the prompt asked for it, otherwise return as payload
     try {
       const jsonResponse = JSON.parse(result);
       return res.json(jsonResponse);
     } catch (e) {
-      // If it's not JSON, return it in a structured way anyway
       return res.json({ response: result });
     }
 
   } catch (error: any) {
     console.error("[GEMINI API ERROR]", error);
     const status = error.status || 500;
-    const message = error.message || "Internal failure in intelligence engine";
-    
     return res.status(status).json({
-      error: message,
+      error: error.message || "Internal failure in intelligence engine",
       code: status === 429 ? "QUOTA_EXCEEDED" : "SERVER_ERROR",
       details: isVercel ? "Check Vercel deployment logs for full stack trace." : error.stack
     });
   }
 });
 
-// Serve Static Files
+import fs from "fs";
+
 const distPath = path.join(process.cwd(), "dist");
+let vite: any;
 
-if (process.env.NODE_ENV === "development" && !isVercel) {
-  const { createServer } = await import("vite");
-  const vite = await createServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
-} else {
-  app.use(express.static(distPath));
-}
-
-// For SPA routing
-app.get("*", async (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  
-  if (process.env.NODE_ENV === "development" && !isVercel) {
-    // Vite handles this automatically via middleware
-    return next();
+async function startServer() {
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production" && !isVercel) {
+    console.log("[SERVER] Starting in DEV mode with Vite middleware");
+    const { createServer: createViteServer } = await import("vite");
+    vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    console.log("[SERVER] Starting in PROD mode serving static files");
+    app.use(express.static(distPath));
   }
 
-  res.sendFile(path.join(distPath, "index.html"), (err) => {
-    if (err) {
-      res.status(404).send("Application files not found. Ensure the project is built.");
+  // Catch-all route for SPA
+  app.get("*", async (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    
+    console.log(`[SERVER] Handling request for: ${req.path}`);
+    
+    try {
+      if (process.env.NODE_ENV !== "production" && vite) {
+        // In development, we use Vite to serve and transform index.html
+        let template = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
+        template = await vite.transformIndexHtml(req.url, template);
+        return res.status(200).set({ "Content-Type": "text/html" }).send(template);
+      } else {
+        // In production, we serve the built index.html
+        const indexPath = path.join(distPath, "index.html");
+        return res.sendFile(indexPath);
+      }
+    } catch (e: any) {
+      console.error(`[SERVER] Error serving index.html: ${e.message}`);
+      if (!res.headersSent) {
+        res.status(500).send("Server Error: Failed to load application.");
+      }
     }
   });
-});
 
-// Environment-specific startup
-if (!isVercel) {
-  const PORT = 3000;
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SERVER] Started in ${process.env.NODE_ENV} mode at http://localhost:${PORT}`);
-    console.log(`[SERVER] Serving static files from: ${distPath}`);
-  });
+  if (!isVercel) {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-export default app;
+startServer();
 
+export default app;
