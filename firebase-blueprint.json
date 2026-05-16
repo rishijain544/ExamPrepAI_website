@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "QuizResult": {
+      "title": "Quiz Result",
+      "description": "The result of a quiz attempt by a user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who took the quiz."
+        },
+        "materialName": {
+          "type": "string",
+          "description": "The name of the material the quiz was based on."
+        },
+        "score": {
+          "type": "number",
+          "description": "The number of correct questions."
+        },
+        "totalQuestions": {
+          "type": "number",
+          "description": "The total number of questions in the quiz."
+        },
+        "accuracy": {
+          "type": "number",
+          "description": "The accuracy percentage."
+        },
+        "timeSpent": {
+          "type": "number",
+          "description": "Total time spent in seconds."
+        },
+        "questionTimes": {
+          "type": "object",
+          "description": "Time spent on each question index."
+        },
+        "topicStats": {
+          "type": "object",
+          "description": "Aggregated stats for each topic."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the result was saved (Server Timestamp)."
+        }
+      },
+      "required": ["userId", "score", "totalQuestions", "accuracy", "timeSpent", "createdAt"]
+    }
+  },
+  "firestore": {
+    "quizResults/{resultId}": {
+      "schema": "QuizResult",
+      "description": "Collection of quiz attempts."
+    }
+  }
+}

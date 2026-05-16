@@ -1,0 +1,6 @@
+{
+  "name": "ExamPrepAI",
+  "description": "An open-source, 100% free AI-powered study arsenal that transforms documents into interactive learning tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
