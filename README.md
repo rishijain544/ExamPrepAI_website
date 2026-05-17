@@ -208,42 +208,6 @@ VITE_FIREBASE_STORAGE_BUCKET=yourproject.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abc123
 ```
-
-| Variable | Link to Get It |
-|---|---|
-| `GEMINI_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
-| `VITE_FIREBASE_*` | [console.firebase.google.com](https://console.firebase.google.com) → Project Settings → General |
-
----
-
-## 🔥 Firebase Setup
-
-**1. Enable Google Authentication**
-Firebase Console → Authentication → Sign-in method → Enable **Google**
-
-**2. Create Firestore Database**
-Firebase Console → Firestore Database → Create database → Start in production mode
-
-**3. Set Security Rules**
-Firebase Console → Firestore → Security tab → Paste these rules → Publish:
-
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /quizResults/{docId} {
-      allow read, write: if request.auth != null 
-                         && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null
-                    && request.auth.uid == request.resource.data.userId;
-    }
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
 **4. Add Vercel domain to authorized domains**
 Firebase Console → Authentication → Settings → Authorized domains → Add your Vercel URL
 
@@ -310,13 +274,6 @@ npm run clean    # Remove dist folder
 ```
 
 ---
-
-## 🎯 Resume Keywords
-
-`Multimodal AI` · `Google Gemini Vision API` · `Prompt Engineering` · `EdTech AI` · `RAG` · `React 19` · `TypeScript` · `Firebase Auth` · `Cloud Firestore` · `Serverless Functions` · `Vercel` · `Express.js` · `Tailwind CSS 4` · `Adaptive Learning` · `Full Stack` · `AI Content Generation` · `Vite` · `CI/CD`
-
----
-
 ## 🤝 Contributing
 
 1. Fork the repository
